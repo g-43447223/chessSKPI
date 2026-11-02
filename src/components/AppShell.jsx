@@ -8,6 +8,7 @@ import { Badge, IconButton, LanguageSwitch } from './ui'
 const NAV_ITEMS = [
   { id: 'dashboard', labelKey: 'nav.dashboard', icon: 'grid' },
   { id: 'players', labelKey: 'nav.players', icon: 'users' },
+  { id: 'teams', labelKey: 'nav.teams', icon: 'users' },
   { id: 'pairings', labelKey: 'nav.pairings', icon: 'swords' },
   { id: 'standings', labelKey: 'nav.standings', icon: 'trophy' },
   { id: 'data', labelKey: 'nav.data', icon: 'database' },
@@ -22,6 +23,10 @@ const PAGE_META = {
   players: {
     titleKey: 'page.players.title',
     subtitleKey: 'page.players.subtitle',
+  },
+  teams: {
+    titleKey: 'page.teams.title',
+    subtitleKey: 'page.teams.subtitle',
   },
   pairings: {
     titleKey: 'page.pairings.title',

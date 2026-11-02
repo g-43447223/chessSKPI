@@ -11,7 +11,7 @@ import { DEFAULT_RATING, isResult } from '../lib/constants'
 import { buildDemoState } from '../lib/demo'
 import { t } from '../lib/i18n'
 import { generatePairings } from '../lib/pairings'
-import { computeStandings } from '../lib/stats'
+import { buildPlayerStats, computeStandings } from '../lib/stats'
 import {
   createEmptyState,
   loadState,
@@ -19,7 +19,7 @@ import {
   saveState,
   storageSize,
 } from '../lib/storage'
-import { uid } from '../lib/utils'
+import { round2, uid } from '../lib/utils'
 
 const TournamentContext = createContext(null)
 
@@ -220,6 +220,195 @@ export function TournamentProvider({ children }) {
     },
     [commit],
   )
+
+  const addTeam = useCallback((name) => {
+    const clean = String(name ?? '').replace(/\s+/g, ' ').trim()
+    if (!clean) return { ok: false, error: t('teams.form.name') }
+    if (stateRef.current.teams.some((team) => team.name.toLowerCase() === clean.toLowerCase())) {
+      return { ok: false, error: t('errors.team.duplicate') }
+    }
+    commit((store) => ({
+      ...store,
+      teams: [...store.teams, { id: uid('team'), name: clean, createdAt: new Date().toISOString() }],
+    }))
+    return { ok: true }
+  }, [commit])
+
+  const updateTeam = useCallback((id, patch) => {
+    let found = false
+    commit((store) => ({
+      ...store,
+      teams: store.teams.map((team) => {
+        if (team.id !== id) return team
+        found = true
+        return {
+          ...team,
+          ...(patch.name !== undefined ? { name: String(patch.name).replace(/\s+/g, ' ').trim() } : {}),
+        }
+      }),
+    }))
+    return found ? { ok: true } : { ok: false, error: t('errors.team.notFound') }
+  }, [commit])
+
+  const deleteTeam = useCallback((id) => {
+    const current = stateRef.current
+    if (current.players.some((player) => player.teamId === id)) {
+      return { ok: false, error: t('errors.team.hasPlayers') }
+    }
+    if (
+      current.teamRounds.some((round) =>
+        (round.pairings ?? []).some(
+          (pairing) =>
+            pairing.whiteId === id || pairing.blackId === id || pairing.byePlayerId === id,
+        ),
+      )
+    ) {
+      return { ok: false, error: t('errors.team.inRounds') }
+    }
+    commit((store) => ({ ...store, teams: store.teams.filter((team) => team.id !== id) }))
+    return { ok: true }
+  }, [commit])
+
+  const assignPlayerTeam = useCallback((playerId, teamId, contributes = true) => {
+    commit((store) => ({
+      ...store,
+      players: store.players.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              teamId: teamId || null,
+              contributesToTeam: teamId ? contributes !== false : false,
+            }
+          : player,
+      ),
+    }))
+    return { ok: true }
+  }, [commit])
+
+  const generateNextTeamRound = useCallback(() => {
+    const current = stateRef.current
+    const number = current.teamRounds.length + 1
+    const base = { ...current, players: current.teams, rounds: current.teamRounds }
+    const result = generatePairings(base, number)
+    if (result.error) return { ok: false, error: result.error }
+    const round = {
+      id: uid('round'),
+      number,
+      status: 'draft',
+      createdAt: new Date().toISOString(),
+      lockedAt: null,
+      pairings: result.pairings,
+    }
+    commit((store) => ({ ...store, teamRounds: [...store.teamRounds, round] }))
+    return { ok: true, round, warnings: result.warnings }
+  }, [commit])
+
+  const regenerateTeamRound = useCallback((roundNumber) => {
+    const current = stateRef.current
+    const existing = current.teamRounds.find((round) => round.number === roundNumber)
+    if (!existing) return { ok: false, error: t('errors.round.notFound') }
+    if (existing.status === 'locked') return { ok: false, error: t('errors.round.regenerateLocked') }
+    const base = {
+      ...current,
+      players: current.teams,
+      rounds: current.teamRounds.filter((round) => round.number < roundNumber),
+    }
+    const result = generatePairings(base, roundNumber)
+    if (result.error) return { ok: false, error: result.error }
+    commit((store) => ({
+      ...store,
+      teamRounds: store.teamRounds.map((round) =>
+        round.number === roundNumber
+          ? { ...round, pairings: result.pairings, status: 'draft' }
+          : round,
+      ),
+    }))
+    return { ok: true, warnings: result.warnings, discarded: existing.pairings.length }
+  }, [commit])
+
+  const updateTeamResult = useCallback((roundNumber, pairingId, result) => {
+    const current = stateRef.current
+    const round = current.teamRounds.find((item) => item.number === roundNumber)
+    if (!round) return { ok: false, error: t('errors.round.notFound') }
+    if (round.status === 'locked') return { ok: false, error: t('errors.round.lockedEdit') }
+    if (result !== null && !isResult(result)) return { ok: false, error: t('errors.result.unknown') }
+    commit((store) => ({
+      ...store,
+      teamRounds: store.teamRounds.map((item) => {
+        if (item.number !== roundNumber) return item
+        return {
+          ...item,
+          pairings: item.pairings.map((pairing) =>
+            pairing.id === pairingId && !pairing.byePlayerId
+              ? { ...pairing, result }
+              : pairing,
+          ),
+        }
+      }),
+    }))
+    return { ok: true }
+  }, [commit])
+
+  const lockTeamRound = useCallback((roundNumber, options = {}) => {
+    const current = stateRef.current
+    const round = current.teamRounds.find((item) => item.number === roundNumber)
+    if (!round) return { ok: false, error: t('errors.round.notFound') }
+    if (round.status === 'locked') return { ok: false, error: t('errors.round.alreadyLocked') }
+    const unreported = round.pairings.filter((pairing) => !pairing.byePlayerId && !pairing.result)
+    if (unreported.length && !options.force) {
+      return {
+        ok: false,
+        needsConfirmation: true,
+        remaining: unreported.length,
+        error: t('errors.round.missingResults', { count: unreported.length }),
+      }
+    }
+    commit((store) => ({
+      ...store,
+      teamRounds: store.teamRounds.map((item) =>
+        item.number === roundNumber
+          ? { ...item, status: 'locked', lockedAt: new Date().toISOString() }
+          : item,
+      ),
+    }))
+    return { ok: true, unreported: unreported.length }
+  }, [commit])
+
+  const reopenTeamRound = useCallback((roundNumber) => {
+    const current = stateRef.current
+    const round = current.teamRounds.find((item) => item.number === roundNumber)
+    if (!round) return { ok: false, error: t('errors.round.notFound') }
+    if (round.status !== 'locked') return { ok: false, error: t('errors.round.alreadyOpen') }
+    if (round.number !== current.teamRounds.length) {
+      return { ok: false, error: t('errors.round.onlyLatestReopen') }
+    }
+    commit((store) => ({
+      ...store,
+      teamRounds: store.teamRounds.map((item) =>
+        item.number === roundNumber
+          ? { ...item, status: 'draft', lockedAt: null }
+          : item,
+      ),
+    }))
+    return { ok: true }
+  }, [commit])
+
+  const deleteTeamRound = useCallback((roundNumber) => {
+    const current = stateRef.current
+    const round = current.teamRounds.find((item) => item.number === roundNumber)
+    if (!round) return { ok: false, error: t('errors.round.notFound') }
+    if (round.number !== current.teamRounds.length) {
+      return { ok: false, error: t('errors.round.onlyLatestDelete') }
+    }
+    if (round.status === 'locked') {
+      return { ok: false, error: t('errors.round.reopenBeforeDelete') }
+    }
+    commit((store) => ({
+      ...store,
+      teamRounds: store.teamRounds.filter((item) => item.number !== roundNumber),
+    }))
+    return { ok: true }
+  }, [commit])
 
   const updateTournament = useCallback(
     (patch) => {
@@ -451,6 +640,57 @@ export function TournamentProvider({ children }) {
     [state.players, state.rounds],
   )
 
+  const teamStandings = useMemo(
+    () => computeStandings(state.teams, state.teamRounds),
+    [state.teams, state.teamRounds],
+  )
+
+  const teamAggregateStandings = useMemo(() => {
+    const stats = buildPlayerStats(state.players, state.rounds)
+    const rows = state.teams.map((team) => {
+      const members = state.players.filter(
+        (player) => player.teamId === team.id && player.contributesToTeam,
+      )
+      let points = 0
+      let games = 0
+      let wins = 0
+      let draws = 0
+      let losses = 0
+      let byes = 0
+      for (const member of members) {
+        const entry = stats.get(member.id)
+        if (!entry) continue
+        points += entry.points
+        games += entry.games
+        wins += entry.wins
+        draws += entry.draws
+        losses += entry.losses
+        byes += entry.byes
+      }
+      return {
+        id: team.id,
+        name: team.name,
+        memberCount: members.length,
+        points: round2(points),
+        games,
+        wins,
+        draws,
+        losses,
+        byes,
+        rank: 0,
+      }
+    })
+    rows.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
+    let previous = null
+    let rank = 0
+    rows.forEach((row, index) => {
+      if (!previous || previous.points !== row.points) rank = index + 1
+      row.rank = rank
+      previous = row
+    })
+    return rows
+  }, [state.teams, state.players, state.rounds])
+
   const activePlayers = useMemo(
     () => state.players.filter((player) => player.status !== 'withdrawn'),
     [state.players],
@@ -461,9 +701,13 @@ export function TournamentProvider({ children }) {
       state,
       tournament: state.tournament,
       players: state.players,
+      teams: state.teams,
       rounds: state.rounds,
+      teamRounds: state.teamRounds,
       settings: state.settings,
       standings,
+      teamStandings,
+      teamAggregateStandings,
       activePlayers,
       toasts,
       savedAt,
@@ -476,6 +720,16 @@ export function TournamentProvider({ children }) {
       deletePlayer,
       setPlayerStatus,
       setAbsence,
+      assignPlayerTeam,
+      addTeam,
+      updateTeam,
+      deleteTeam,
+      generateNextTeamRound,
+      regenerateTeamRound,
+      updateTeamResult,
+      lockTeamRound,
+      reopenTeamRound,
+      deleteTeamRound,
       updateTournament,
       updateSettings,
       generateNextRound,
@@ -492,6 +746,8 @@ export function TournamentProvider({ children }) {
     [
       state,
       standings,
+      teamStandings,
+      teamAggregateStandings,
       activePlayers,
       toasts,
       savedAt,
@@ -504,6 +760,16 @@ export function TournamentProvider({ children }) {
       deletePlayer,
       setPlayerStatus,
       setAbsence,
+      assignPlayerTeam,
+      addTeam,
+      updateTeam,
+      deleteTeam,
+      generateNextTeamRound,
+      regenerateTeamRound,
+      updateTeamResult,
+      lockTeamRound,
+      reopenTeamRound,
+      deleteTeamRound,
       updateTournament,
       updateSettings,
       generateNextRound,

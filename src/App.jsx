@@ -8,6 +8,7 @@ import { PrintView } from './components/PrintView'
 import { ProjectorView } from './components/ProjectorView'
 import { Settings } from './components/Settings'
 import { Standings } from './components/Standings'
+import { Teams } from './components/Teams'
 import { Toasts } from './components/ui'
 import { LanguageProvider, useLanguage } from './state/LanguageProvider'
 import { TournamentProvider, useTournament } from './state/TournamentProvider'
@@ -15,6 +16,7 @@ import { TournamentProvider, useTournament } from './state/TournamentProvider'
 const PAGE_TITLES = {
   dashboard: 'page.dashboard.title',
   players: 'page.players.title',
+  teams: 'page.teams.title',
   pairings: 'page.pairings.title',
   standings: 'page.standings.title',
   data: 'page.data.title',
@@ -44,7 +46,11 @@ function TournamentApp() {
   if (printTarget !== undefined) {
     return (
       <>
-        <PrintView roundNumber={printTarget} onClose={() => setPrintTarget(undefined)} />
+        <PrintView
+          scope={printTarget?.scope ?? 'individual'}
+          roundNumber={printTarget?.round ?? null}
+          onClose={() => setPrintTarget(undefined)}
+        />
         <Toasts toasts={toasts} onDismiss={dismissToast} />
       </>
     )
@@ -54,6 +60,8 @@ function TournamentApp() {
     switch (page) {
       case 'players':
         return <Players />
+      case 'teams':
+        return <Teams />
       case 'pairings':
         return <Pairings onPrint={setPrintTarget} />
       case 'standings':

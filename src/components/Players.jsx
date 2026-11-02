@@ -22,10 +22,11 @@ import {
   Textarea,
 } from './ui'
 
-const EMPTY_FORM = { name: '', grade: '', rating: String(DEFAULT_RATING) }
+const EMPTY_FORM = { name: '', grade: '', rating: String(DEFAULT_RATING), teamId: '', contributesToTeam: true }
 
 function PlayerModal({ open, onClose, player, onSave, existingNames }) {
   const { t } = useLanguage()
+  const { teams } = useTournament()
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState('')
   const editing = Boolean(player)
@@ -38,6 +39,8 @@ function PlayerModal({ open, onClose, player, onSave, existingNames }) {
             name: player.name,
             grade: player.grade ?? '',
             rating: String(player.rating ?? DEFAULT_RATING),
+            teamId: player.teamId ?? '',
+            contributesToTeam: player.contributesToTeam ?? Boolean(player.teamId),
           }
         : EMPTY_FORM,
     )
@@ -65,6 +68,8 @@ function PlayerModal({ open, onClose, player, onSave, existingNames }) {
       name: form.name.trim(),
       grade: form.grade.trim(),
       rating,
+      teamId: form.teamId || null,
+      contributesToTeam: form.teamId ? form.contributesToTeam : false,
     })
     if (!result?.ok) {
       setError(result?.error ?? t('players.error.save'))
@@ -130,6 +135,38 @@ function PlayerModal({ open, onClose, player, onSave, existingNames }) {
             />
           </Field>
         </div>
+        <Field label={t('teams.player.team')}>
+          <Select
+            value={form.teamId}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                teamId: event.target.value,
+                contributesToTeam: event.target.value ? current.contributesToTeam : false,
+              }))
+            }
+          >
+            <option value="">{t('teams.player.noTeam')}</option>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {form.teamId ? (
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
+            <input
+              type="checkbox"
+              checked={form.contributesToTeam}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, contributesToTeam: event.target.checked }))
+              }
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            {t('teams.player.contributes')}
+          </label>
+        ) : null}
         {duplicate ? (
           <InfoNote tone="amber" icon="alert">
             {t('players.warning.duplicate')}
@@ -367,6 +404,7 @@ export function Players() {
     updatePlayer,
     deletePlayer,
     setPlayerStatus,
+    assignPlayerTeam,
     notify,
   } = useTournament()
 
@@ -413,13 +451,20 @@ export function Players() {
   }
 
   const handleSave = (data) => {
+    const { teamId, contributesToTeam, ...playerData } = data
     if (editing) {
-      const result = updatePlayer(editing.id, data)
-      if (result.ok) notify(t('players.toast.updated', { name: data.name }))
+      const result = updatePlayer(editing.id, playerData)
+      if (result.ok) {
+        assignPlayerTeam(editing.id, teamId, contributesToTeam)
+        notify(t('players.toast.updated', { name: data.name }))
+      }
       return result
     }
-    const result = addPlayer(data)
-    if (result.ok) notify(t('players.toast.added', { name: data.name }))
+    const result = addPlayer(playerData)
+    if (result.ok && result.players?.length) {
+      assignPlayerTeam(result.players[0].id, teamId, contributesToTeam)
+      notify(t('players.toast.added', { name: data.name }))
+    }
     return result
   }
 

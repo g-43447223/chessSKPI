@@ -15,7 +15,9 @@ export function createEmptyState() {
       createdAt: new Date().toISOString(),
     },
     players: [],
+    teams: [],
     rounds: [],
+    teamRounds: [],
     settings: {
       showRatingsOnPrint: true,
       includeStandingsOnPrint: true,
@@ -38,6 +40,19 @@ function normalizePlayer(raw, index) {
       : [],
     createdAt: raw.createdAt || new Date().toISOString(),
     seed: Number.isFinite(Number(raw.seed)) ? Number(raw.seed) : index + 1,
+    teamId: raw.teamId ? String(raw.teamId) : null,
+    contributesToTeam: raw.contributesToTeam === false ? false : Boolean(raw.teamId),
+  }
+}
+
+function normalizeTeam(raw, index) {
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name ?? '').trim()
+  if (!name) return null
+  return {
+    id: String(raw.id || uid('team')),
+    name,
+    createdAt: raw.createdAt || new Date().toISOString(),
   }
 }
 
@@ -97,6 +112,17 @@ export function normalizeState(raw) {
   }
 
   const base = createEmptyState()
+  const teams = (Array.isArray(candidate.teams) ? candidate.teams : [])
+    .map(normalizeTeam)
+    .filter(Boolean)
+
+  const teamIds = new Set()
+  for (const team of teams) {
+    if (teamIds.has(team.id)) team.id = uid('team')
+    teamIds.add(team.id)
+  }
+  const teamsById = new Map(teams.map((team) => [team.id, team]))
+
   const players = candidate.players
     .map(normalizePlayer)
     .filter(Boolean)
@@ -105,11 +131,21 @@ export function normalizeState(raw) {
   for (const player of players) {
     if (ids.has(player.id)) player.id = uid('pl')
     ids.add(player.id)
+    if (player.teamId && !teamsById.has(player.teamId)) {
+      player.teamId = null
+      player.contributesToTeam = false
+    }
+    if (!player.teamId) player.contributesToTeam = false
   }
   const playersById = new Map(players.map((player) => [player.id, player]))
 
   const rounds = candidate.rounds
     .map((round) => normalizeRound(round, playersById))
+    .filter(Boolean)
+    .sort((a, b) => a.number - b.number)
+
+  const teamRounds = (Array.isArray(candidate.teamRounds) ? candidate.teamRounds : [])
+    .map((round) => normalizeRound(round, teamsById))
     .filter(Boolean)
     .sort((a, b) => a.number - b.number)
 
@@ -134,7 +170,9 @@ export function normalizeState(raw) {
       ),
     },
     players,
+    teams,
     rounds,
+    teamRounds,
     settings: { ...base.settings, ...settings },
   }
 }

@@ -139,13 +139,18 @@ function ProjectorPairings({ round, playersById, t }) {
 
 export function ProjectorView({ onClose }) {
   const { t } = useLanguage()
-  const { tournament, standings, rounds, players } = useTournament()
-  const latestRound = rounds[rounds.length - 1] ?? null
+  const { tournament, standings, rounds, players, teams, teamStandings, teamRounds } = useTournament()
+  const [scope, setScope] = useState('individual')
+  const isTeam = scope === 'team'
+  const items = isTeam ? teams : players
+  const itemStandings = isTeam ? teamStandings : standings
+  const itemRounds = isTeam ? teamRounds : rounds
+  const latestRound = itemRounds[itemRounds.length - 1] ?? null
   const [tab, setTab] = useState('standings')
   const [showAll, setShowAll] = useState(false)
 
-  const playersById = new Map(players.map((player) => [player.id, player]))
-  const rows = standings.filter((row) => row.status !== 'withdrawn')
+  const playersById = new Map(items.map((item) => [item.id, item]))
+  const rows = itemStandings.filter((row) => !row.status || row.status !== 'withdrawn')
   const visible = showAll ? rows.slice(0, 24) : rows.slice(0, 10)
 
   useEffect(() => {
@@ -180,6 +185,21 @@ export function ProjectorView({ onClose }) {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <div className="flex rounded-xl bg-white/[0.06] p-1">
+            {['individual', 'team'].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setScope(item)}
+                className={cn(
+                  'rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors sm:text-xs',
+                  scope === item ? 'bg-emerald-400 text-ink-950' : 'text-slate-400 hover:text-white',
+                )}
+              >
+                {item === 'individual' ? t('standings.category.individual') : t('standings.category.team')}
+              </button>
+            ))}
+          </div>
           <div className="flex rounded-xl bg-white/[0.06] p-1">
             <button
               type="button"

@@ -238,22 +238,25 @@ function StandingsSheet({ rows, tournament, round, label, t, locale }) {
   )
 }
 
-export function PrintView({ roundNumber, onClose }) {
+export function PrintView({ scope = 'individual', roundNumber, onClose }) {
   const { t, locale } = useLanguage()
-  const { rounds, players, tournament, settings } = useTournament()
+  const { rounds, players, teams, teamRounds, tournament, settings } = useTournament()
+  const isTeam = scope === 'team'
+  const items = isTeam ? teams : players
+  const itemRounds = isTeam ? teamRounds : rounds
   const [includeStandings, setIncludeStandings] = useState(settings.includeStandingsOnPrint ?? true)
   const [showResults, setShowResults] = useState(false)
   const [showRatings, setShowRatings] = useState(settings.showRatingsOnPrint ?? true)
 
-  const round = roundNumber ? rounds.find((item) => item.number === roundNumber) ?? null : null
-  const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players])
+  const round = roundNumber ? itemRounds.find((item) => item.number === roundNumber) ?? null : null
+  const playersById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
 
   const standingsRows = useMemo(() => {
     const relevantRounds = round
-      ? rounds.filter((item) => item.number <= round.number)
-      : rounds
-    return computeStandings(players, relevantRounds)
-  }, [players, rounds, round])
+      ? itemRounds.filter((item) => item.number <= round.number)
+      : itemRounds
+    return computeStandings(items, relevantRounds)
+  }, [items, itemRounds, round])
 
   useEffect(() => {
     const previous = document.title

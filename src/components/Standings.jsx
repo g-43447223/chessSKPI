@@ -45,10 +45,36 @@ function FormDots({ wins, draws, losses, t }) {
 
 export function Standings({ onProjector, onPrint }) {
   const { t } = useLanguage()
-  const { standings, players, tournament } = useTournament()
+  const { standings, players, teams, teamStandings, teamAggregateStandings, tournament } = useTournament()
+  const [category, setCategory] = useState('individual')
+  const [teamView, setTeamView] = useState('matches')
   const [grade, setGrade] = useState('all')
   const [search, setSearch] = useState('')
   const [hideWithdrawn, setHideWithdrawn] = useState(false)
+
+  const isTeam = category === 'team'
+
+  const renderCategoryTabs = () => (
+    <div className="flex flex-wrap gap-2">
+      {['individual', 'team'].map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => setCategory(item)}
+          className={cn(
+            'rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors',
+            category === item
+              ? 'bg-ink-900 text-white'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+          )}
+        >
+          {item === 'individual'
+            ? t('standings.category.individual')
+            : t('standings.category.team')}
+        </button>
+      ))}
+    </div>
+  )
 
   const grades = useMemo(
     () => [...new Set(players.map((player) => player.grade).filter(Boolean))].sort(),
@@ -79,15 +105,113 @@ export function Standings({ onProjector, onPrint }) {
 
   const anyResults = standings.some((row) => row.games > 0)
 
-  if (!players.length) {
+  if (isTeam && !teams.length) {
     return (
-      <Card>
-        <EmptyState
-          icon="trophy"
-          title={t('standings.empty.noPlayers.title')}
-          description={t('standings.empty.noPlayers.description')}
-        />
-      </Card>
+      <div className="space-y-4">
+        {renderCategoryTabs()}
+        <Card>
+          <EmptyState
+            icon="trophy"
+            title={t('teams.empty.title')}
+            description={t('teams.empty.description')}
+          />
+        </Card>
+      </div>
+    )
+  }
+  if (!isTeam && !players.length) {
+    return (
+      <div className="space-y-4">
+        {renderCategoryTabs()}
+        <Card>
+          <EmptyState
+            icon="trophy"
+            title={t('standings.empty.noPlayers.title')}
+            description={t('standings.empty.noPlayers.description')}
+          />
+        </Card>
+      </div>
+    )
+  }
+
+  if (isTeam) {
+    const teamRows = (teamView === 'aggregate' ? teamAggregateStandings : teamStandings)
+    const anyTeamResults = teamRows.some((row) => row.games > 0)
+    return (
+      <div className="space-y-4 sm:space-y-5">
+        {renderCategoryTabs()}
+        <div className="flex flex-wrap gap-2">
+          {['matches', 'aggregate'].map((view) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => setTeamView(view)}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors',
+                teamView === view
+                  ? 'bg-ink-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+              )}
+            >
+              {view === 'matches'
+                ? t('teams.standings.tab.matches')
+                : t('teams.standings.tab.aggregate')}
+            </button>
+          ))}
+        </div>
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-100 p-4 sm:p-5">
+            <Badge tone={anyTeamResults ? 'emerald' : 'slate'} dot>
+              {anyTeamResults ? t('standings.badge.live') : t('standings.badge.noResults')}
+            </Badge>
+            <span className="text-[12px] text-slate-500">
+              {t('teams.membersCount', { count: teamRows.length })}
+            </span>
+          </div>
+          {teamRows.length === 0 ? (
+            <EmptyState icon="trophy" title={t('teams.empty.title')} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/60 text-[10px] font-bold tracking-[0.06em] text-slate-400 uppercase">
+                    <th className="w-16 px-4 py-3 text-center">{t('standings.table.rank')}</th>
+                    <th className="px-3 py-3">{t('teams.list.title')}</th>
+                    {teamView === 'aggregate' ? (
+                      <th className="px-3 py-3 text-right">{t('teams.members')}</th>
+                    ) : null}
+                    <th className="bg-emerald-50/40 px-3 py-3 text-right text-emerald-700">{t('standings.table.points')}</th>
+                    <th className="px-3 py-3 text-right">G</th>
+                    <th className="px-4 py-3 text-center">{t('standings.table.wdl')}</th>
+                    <th className="px-3 py-3 text-right">Bye</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {teamRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50/80">
+                      <td className="px-4 py-3 text-center">
+                        <RankMark rank={row.rank} />
+                      </td>
+                      <td className="px-3 py-3 font-bold text-slate-800">{row.name}</td>
+                      {teamView === 'aggregate' ? (
+                        <td className="px-3 py-3 text-right text-slate-500">{row.memberCount}</td>
+                      ) : null}
+                      <td className="bg-emerald-50/30 px-3 py-3 text-right text-[15px] font-black text-slate-900">
+                        {formatPoints(row.points)}
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-500">{row.games}</td>
+                      <td className="px-4 py-3 text-center">
+                        <FormDots wins={row.wins} draws={row.draws} losses={row.losses} t={t} />
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-500">{row.byes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
     )
   }
 
@@ -95,6 +219,7 @@ export function Standings({ onProjector, onPrint }) {
     <div className="space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
+          {renderCategoryTabs()}
           <Badge tone={anyResults ? 'emerald' : 'slate'} dot>
             {anyResults ? t('standings.badge.live') : t('standings.badge.noResults')}
           </Badge>
@@ -108,7 +233,7 @@ export function Standings({ onProjector, onPrint }) {
             variant="ghost"
             size="sm"
             icon="printer"
-            onClick={() => onPrint?.(null)}
+            onClick={() => onPrint?.({ scope: category, round: null })}
           >
             {t('standings.print')}
           </Button>
@@ -422,7 +547,7 @@ export function Standings({ onProjector, onPrint }) {
             <Button size="sm" variant="dark" icon="monitor" onClick={onProjector}>
               {t('standings.projector.open')}
             </Button>
-            <Button size="sm" variant="secondary" icon="printer" onClick={() => onPrint?.(null)}>
+            <Button size="sm" variant="secondary" icon="printer" onClick={() => onPrint?.({ scope: category, round: null })}>
               {t('standings.projector.print')}
             </Button>
           </div>

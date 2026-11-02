@@ -391,21 +391,46 @@ function WarningsModal({ warnings, onClose, roundNumber }) {
   )
 }
 
-export function Pairings({ onPrint }) {
+export function Pairings({ onPrint, mode = 'individual' }) {
   const { t } = useLanguage()
+  const [category, setCategory] = useState(mode)
+  const isTeam = category === 'team'
   const {
-    players,
-    rounds,
+    players: allPlayers,
+    teams,
+    rounds: allRounds,
+    teamRounds: allTeamRounds,
     tournament,
-    standings,
+    standings: playerStandings,
+    teamStandings,
     generateNextRound,
     regenerateRound,
     updateResult,
     lockRound,
     reopenRound,
     deleteRound,
+    generateNextTeamRound,
+    regenerateTeamRound,
+    updateTeamResult,
+    lockTeamRound,
+    reopenTeamRound,
+    deleteTeamRound,
     notify,
   } = useTournament()
+
+  const players = isTeam ? teams : allPlayers
+  const rounds = isTeam ? allTeamRounds : allRounds
+  const standings = isTeam ? teamStandings : playerStandings
+  const activePlayers = isTeam
+    ? teams
+    : allPlayers.filter((player) => player.status !== 'withdrawn')
+
+  const generateNextRoundFn = isTeam ? generateNextTeamRound : generateNextRound
+  const regenerateRoundFn = isTeam ? regenerateTeamRound : regenerateRound
+  const updateResultFn = isTeam ? updateTeamResult : updateResult
+  const lockRoundFn = isTeam ? lockTeamRound : lockRound
+  const reopenRoundFn = isTeam ? reopenTeamRound : reopenRound
+  const deleteRoundFn = isTeam ? deleteTeamRound : deleteRound
 
   const latestRound = rounds[rounds.length - 1] ?? null
   const [selectedNumber, setSelectedNumber] = useState(
@@ -438,12 +463,14 @@ export function Pairings({ onPrint }) {
     selectedNumber >= 1 &&
     selectedNumber <= tournament.totalRounds
 
-  const eligible = players.filter(
-    (player) =>
-      player.status !== 'withdrawn' && !(player.absences ?? []).includes(selectedNumber),
-  )
+  const eligible = isTeam
+    ? [...players]
+    : players.filter(
+        (player) =>
+          player.status !== 'withdrawn' && !(player.absences ?? []).includes(selectedNumber),
+      )
 
-  const activeCount = players.filter((player) => player.status !== 'withdrawn').length
+  const activeCount = isTeam ? players.length : players.filter((player) => player.status !== 'withdrawn').length
   const progress = roundProgress(selectedRound)
   const stale = selectedRound ? pairingsAreStale(players, selectedRound) : false
   const isLatest = selectedRound?.number === rounds.length
@@ -459,7 +486,7 @@ export function Pairings({ onPrint }) {
   )
 
   const handleGenerate = () => {
-    const result = generateNextRound()
+    const result = generateNextRoundFn()
     if (!result.ok) {
       notify(result.error, 'error')
       return
@@ -480,7 +507,7 @@ export function Pairings({ onPrint }) {
 
   const handleRegenerate = () => {
     if (!selectedRound) return
-    const result = regenerateRound(selectedRound.number)
+    const result = regenerateRoundFn(selectedRound.number)
     setRegenerateOpen(false)
     if (!result.ok) {
       notify(result.error, 'error')
@@ -496,7 +523,7 @@ export function Pairings({ onPrint }) {
 
   const handleLock = () => {
     if (!selectedRound) return
-    const result = lockRound(selectedRound.number)
+    const result = lockRoundFn(selectedRound.number)
     if (result.ok) {
       notify(
         result.unreported
@@ -519,7 +546,7 @@ export function Pairings({ onPrint }) {
 
   const forceLock = () => {
     if (!selectedRound) return
-    const result = lockRound(selectedRound.number, { force: true })
+    const result = lockRoundFn(selectedRound.number, { force: true })
     setLockOpen(false)
     if (result.ok) {
       notify(t('pairings.toast.lockedForce', { round: selectedRound.number }), 'info')
@@ -530,7 +557,7 @@ export function Pairings({ onPrint }) {
 
   const handleReopen = () => {
     if (!selectedRound) return
-    const result = reopenRound(selectedRound.number)
+    const result = reopenRoundFn(selectedRound.number)
     setReopenOpen(false)
     if (result.ok) notify(t('pairings.toast.reopened', { round: selectedRound.number }), 'info')
     else notify(result.error, 'error')
@@ -538,7 +565,7 @@ export function Pairings({ onPrint }) {
 
   const handleDelete = () => {
     if (!selectedRound) return
-    const result = deleteRound(selectedRound.number)
+    const result = deleteRoundFn(selectedRound.number)
     setDeleteOpen(false)
     if (result.ok) {
       notify(t('pairings.toast.deleted', { round: selectedRound.number }))
@@ -548,21 +575,60 @@ export function Pairings({ onPrint }) {
     }
   }
 
-  // No players at all
   if (!players.length) {
     return (
-      <Card>
-        <EmptyState
-          icon="users"
-          title={t('pairings.empty.title')}
-          description={t('pairings.empty.description')}
-        />
-      </Card>
+      <div className="space-y-4 sm:space-y-5">
+        <div className="flex flex-wrap gap-2">
+          {['individual', 'team'].map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors',
+                category === item
+                  ? 'bg-ink-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+              )}
+            >
+              {item === 'individual'
+                ? t('pairings.category.individual')
+                : t('pairings.category.team')}
+            </button>
+          ))}
+        </div>
+        <Card>
+          <EmptyState
+            icon="users"
+            title={isTeam ? t('teams.empty.title') : t('pairings.empty.title')}
+            description={isTeam ? t('teams.empty.description') : t('pairings.empty.description')}
+          />
+        </Card>
+      </div>
     )
   }
 
   return (
     <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-wrap gap-2">
+        {['individual', 'team'].map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setCategory(item)}
+            className={cn(
+              'rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors',
+              category === item
+                ? 'bg-ink-900 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+            )}
+          >
+            {item === 'individual'
+              ? t('pairings.category.individual')
+              : t('pairings.category.team')}
+          </button>
+        ))}
+      </div>
       {/* Round switcher */}
       <div className="flex items-center gap-2">
         <div className="scroll-thin flex flex-1 gap-2 overflow-x-auto pb-1">
@@ -612,7 +678,7 @@ export function Pairings({ onPrint }) {
             variant="secondary"
             size="sm"
             icon="printer"
-            onClick={() => onPrint(selectedRound.number)}
+            onClick={() => onPrint({ scope: isTeam ? 'team' : 'individual', round: selectedRound.number })}
             className="hidden shrink-0 sm:inline-flex"
           >
             {t('pairings.print')}
@@ -674,9 +740,11 @@ export function Pairings({ onPrint }) {
                       })}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" icon="users" onClick={() => setAttendanceOpen(true)}>
-                  {t('pairings.ready.attendance')}
-                </Button>
+                {!isTeam ? (
+                  <Button variant="secondary" icon="users" onClick={() => setAttendanceOpen(true)}>
+                    {t('pairings.ready.attendance')}
+                  </Button>
+                ) : null}
                 <Button
                   icon="sparkles"
                   onClick={handleGenerate}
@@ -783,21 +851,23 @@ export function Pairings({ onPrint }) {
                   variant="secondary"
                   size="sm"
                   icon="printer"
-                  onClick={() => onPrint(selectedRound.number)}
+                  onClick={() => onPrint({ scope: isTeam ? 'team' : 'individual', round: selectedRound.number })}
                   className="sm:hidden"
                 >
                   {t('pairings.print')}
                 </Button>
                 {canLock ? (
                   <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon="users"
-                      onClick={() => setAttendanceOpen(true)}
-                    >
-                      {t('pairings.action.attendance')}
-                    </Button>
+                    {!isTeam ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="users"
+                        onClick={() => setAttendanceOpen(true)}
+                      >
+                        {t('pairings.action.attendance')}
+                      </Button>
+                    ) : null}
                     <Button
                       variant="secondary"
                       size="sm"
@@ -828,7 +898,7 @@ export function Pairings({ onPrint }) {
                       </Button>
                     ) : null}
                     {isFinalLocked ? (
-                      <Button size="sm" icon="trophy" onClick={() => onPrint(selectedRound.number)}>
+                      <Button size="sm" icon="trophy" onClick={() => onPrint({ scope: isTeam ? 'team' : 'individual', round: selectedRound.number })}>
                         {t('pairings.action.finalPrint')}
                       </Button>
                     ) : null}
@@ -889,7 +959,7 @@ export function Pairings({ onPrint }) {
                   locked={selectedRound.status === 'locked'}
                   t={t}
                   onChangeResult={(pairingId, result) => {
-                    const output = updateResult(selectedRound.number, pairingId, result)
+                    const output = updateResultFn(selectedRound.number, pairingId, result)
                     if (!output.ok) notify(output.error, 'error')
                   }}
                 />
@@ -953,7 +1023,7 @@ export function Pairings({ onPrint }) {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" icon="printer" onClick={() => onPrint(selectedRound.number)}>
+                  <Button size="sm" variant="secondary" icon="printer" onClick={() => onPrint({ scope: isTeam ? 'team' : 'individual', round: selectedRound.number })}>
                     {t('pairings.action.printFinal')}
                   </Button>
                 </div>
@@ -965,7 +1035,7 @@ export function Pairings({ onPrint }) {
 
       {selectedRound?.pairings?.length ? (
         <div className="flex items-center justify-between sm:hidden">
-          <Button variant="secondary" size="sm" icon="printer" onClick={() => onPrint(selectedRound.number)}>
+          <Button variant="secondary" size="sm" icon="printer" onClick={() => onPrint({ scope: isTeam ? 'team' : 'individual', round: selectedRound.number })}>
             {t('pairings.action.printSheet')}
           </Button>
         </div>
