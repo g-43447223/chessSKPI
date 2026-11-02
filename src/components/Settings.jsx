@@ -91,11 +91,17 @@ export function Settings() {
     settings,
     updateTournament,
     updateSettings,
+    syncStatus,
+    syncConfig,
+    updateSyncConfig,
+    syncNow,
     notify,
   } = useTournament()
 
   const [draft, setDraft] = useState(() => draftFrom(tournament))
   const [error, setError] = useState('')
+  const [syncUrl, setSyncUrl] = useState(syncConfig?.url ?? '')
+  const [syncToken, setSyncToken] = useState(syncConfig?.token ?? '')
 
   useEffect(() => {
     setDraft(draftFrom(tournament))
@@ -492,6 +498,61 @@ export function Settings() {
               )
             })}
           </div>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title={t('settings.sync.title')}
+          description={t('settings.sync.description')}
+          icon="database"
+        />
+        <div className="space-y-4 p-5">
+          <Field label={t('settings.sync.url')} hint={t('settings.sync.urlHint')}>
+            <Input
+              value={syncUrl}
+              onChange={(event) => setSyncUrl(event.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+            />
+          </Field>
+          <Field label={t('settings.sync.token')} hint={t('settings.sync.tokenHint')}>
+            <Input
+              value={syncToken}
+              onChange={(event) => setSyncToken(event.target.value)}
+              placeholder="token rahsia"
+            />
+          </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              icon="check"
+              onClick={() => {
+                updateSyncConfig({ url: syncUrl, token: syncToken })
+                notify(t('settings.sync.saved'))
+              }}
+            >
+              {t('settings.sync.save')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="refresh"
+              onClick={async () => {
+                updateSyncConfig({ url: syncUrl, token: syncToken })
+                const result = await syncNow()
+                if (result.ok) notify(t('settings.sync.synced'))
+                else notify(result.error || t('settings.sync.error'), 'error')
+              }}
+            >
+              {t('settings.sync.now')}
+            </Button>
+            <span className="text-[12px] text-slate-500">
+              {t('settings.sync.status')}: {syncStatus}
+            </span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            {t('settings.sync.help')}
+          </p>
         </div>
       </Card>
 

@@ -20,6 +20,15 @@ import {
   storageSize,
 } from '../lib/storage'
 import { round2, uid } from '../lib/utils'
+import {
+  clearRemoteVersion,
+  fetchRemoteState,
+  getRemoteVersion,
+  getSyncConfig,
+  pushRemoteState,
+  setRemoteVersion,
+  setSyncConfig,
+} from '../lib/sheets'
 
 const TournamentContext = createContext(null)
 
@@ -30,9 +39,14 @@ export function TournamentProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const [savedAt, setSavedAt] = useState(null)
   const [saveError, setSaveError] = useState(null)
+  const [syncStatus, setSyncStatus] = useState('idle')
+  const [syncConfig, setSyncConfigState] = useState(() => getSyncConfig())
 
   const stateRef = useRef(state)
   const timers = useRef(new Map())
+  const remoteVersionRef = useRef(getRemoteVersion())
+  const readyRef = useRef(false)
+  const pushTimerRef = useRef(null)
 
   const apply = useCallback((next) => {
     stateRef.current = next
@@ -635,6 +649,130 @@ export function TournamentProvider({ children }) {
     return { ok: true }
   }, [apply])
 
+  const updateSyncConfig = useCallback((config) => {
+    setSyncConfig(config)
+    const next = getSyncConfig()
+    setSyncConfigState(next)
+    remoteVersionRef.current = getRemoteVersion()
+    setSyncStatus(next.url && next.token ? 'idle' : 'idle')
+    return { ok: true }
+  }, [])
+
+  const syncNow = useCallback(async () => {
+    const config = getSyncConfig()
+    if (!config.url || !config.token) {
+      setSyncStatus('idle')
+      return { ok: false, error: 'missing_config' }
+    }
+    setSyncStatus('syncing')
+    const remote = await fetchRemoteState(config)
+    if (!remote.ok) {
+      setSyncStatus('error')
+      return remote
+    }
+    if (remote.state && remote.version > remoteVersionRef.current) {
+      try {
+        apply(normalizeState(remote.state))
+      } catch (error) {
+        setSyncStatus('error')
+        return { ok: false, error: error.message }
+      }
+    }
+    remoteVersionRef.current = remote.version || remoteVersionRef.current
+    setRemoteVersion(remoteVersionRef.current)
+
+    const push = await pushRemoteState(config, stateRef.current, remoteVersionRef.current)
+    if (push.conflict) {
+      try {
+        apply(normalizeState(push.state))
+      } catch {
+        /* ignore */
+      }
+      remoteVersionRef.current = push.version || remoteVersionRef.current
+      setRemoteVersion(remoteVersionRef.current)
+      setSyncStatus('synced')
+      return { ok: true, conflict: true }
+    }
+    if (!push.ok) {
+      setSyncStatus('error')
+      return push
+    }
+    remoteVersionRef.current = push.version || remoteVersionRef.current
+    setRemoteVersion(remoteVersionRef.current)
+    setSyncStatus('synced')
+    return { ok: true }
+  }, [apply])
+
+  useEffect(() => {
+    const config = getSyncConfig()
+    if (!config.url || !config.token) {
+      readyRef.current = true
+      return
+    }
+    let cancelled = false
+    setSyncStatus('syncing')
+    fetchRemoteState(config)
+      .then((remote) => {
+        if (cancelled) return
+        if (remote.ok && remote.state) {
+          if (remote.version > remoteVersionRef.current) {
+            try {
+              apply(normalizeState(remote.state))
+            } catch {
+              /* ignore */
+            }
+          }
+          remoteVersionRef.current = remote.version || remoteVersionRef.current
+          setRemoteVersion(remoteVersionRef.current)
+        }
+        setSyncStatus(remote.ok ? 'synced' : 'error')
+        readyRef.current = true
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSyncStatus('error')
+        readyRef.current = true
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [apply])
+
+  useEffect(() => {
+    if (!readyRef.current) return
+    const config = getSyncConfig()
+    if (!config.url || !config.token) return
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
+    pushTimerRef.current = setTimeout(() => {
+      setSyncStatus('syncing')
+      pushRemoteState(config, stateRef.current, remoteVersionRef.current)
+        .then((push) => {
+          if (push.conflict) {
+            try {
+              apply(normalizeState(push.state))
+            } catch {
+              /* ignore */
+            }
+            remoteVersionRef.current = push.version || remoteVersionRef.current
+            setRemoteVersion(remoteVersionRef.current)
+            setSyncStatus('synced')
+            return
+          }
+          if (!push.ok) {
+            setSyncStatus('error')
+            return
+          }
+          remoteVersionRef.current = push.version || remoteVersionRef.current
+          setRemoteVersion(remoteVersionRef.current)
+          setSyncStatus('synced')
+        })
+        .catch(() => setSyncStatus('error'))
+    }, 1500)
+    return () => {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
+    }
+  }, [state])
+
   const standings = useMemo(
     () => computeStandings(state.players, state.rounds),
     [state.players, state.rounds],
@@ -712,6 +850,10 @@ export function TournamentProvider({ children }) {
       toasts,
       savedAt,
       saveError,
+      syncStatus,
+      syncConfig,
+      updateSyncConfig,
+      syncNow,
       notify,
       dismissToast,
       addPlayer,
@@ -752,6 +894,10 @@ export function TournamentProvider({ children }) {
       toasts,
       savedAt,
       saveError,
+      syncStatus,
+      syncConfig,
+      updateSyncConfig,
+      syncNow,
       notify,
       dismissToast,
       addPlayer,
