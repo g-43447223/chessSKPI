@@ -784,6 +784,18 @@ export function TournamentProvider({ children }) {
     return { ok: true }
   }, [])
 
+  const applyBundle = useCallback((raw) => {
+    const normalized = normalizeBundle(raw)
+    const active =
+      normalized.tournaments.find((item) => item.id === normalized.activeId) ||
+      normalized.tournaments[0]
+    bundleRef.current = normalized
+    setBundle(normalized)
+    stateRef.current = active.state
+    setState(active.state)
+    return normalized
+  }, [])
+
   const syncNow = useCallback(async () => {
     const config = getSyncConfig()
     if (!config.url || !config.token) {
@@ -796,24 +808,15 @@ export function TournamentProvider({ children }) {
       setSyncStatus('error')
       return remote
     }
-    if (remote.state && remote.version > remoteVersionRef.current) {
-      try {
-        apply(normalizeState(remote.state))
-      } catch (error) {
-        setSyncStatus('error')
-        return { ok: false, error: error.message }
-      }
+    if (remote.state) {
+      applyBundle(remote.state)
     }
     remoteVersionRef.current = remote.version || remoteVersionRef.current
     setRemoteVersion(remoteVersionRef.current)
 
-    const push = await pushRemoteState(config, stateRef.current, remoteVersionRef.current)
+    const push = await pushRemoteState(config, bundleRef.current, remoteVersionRef.current)
     if (push.conflict) {
-      try {
-        apply(normalizeState(push.state))
-      } catch {
-        /* ignore */
-      }
+      if (push.state) applyBundle(push.state)
       remoteVersionRef.current = push.version || remoteVersionRef.current
       setRemoteVersion(remoteVersionRef.current)
       setSyncStatus('synced')
@@ -827,7 +830,7 @@ export function TournamentProvider({ children }) {
     setRemoteVersion(remoteVersionRef.current)
     setSyncStatus('synced')
     return { ok: true }
-  }, [apply])
+  }, [applyBundle])
 
   useEffect(() => {
     const config = getSyncConfig()
@@ -841,13 +844,7 @@ export function TournamentProvider({ children }) {
       .then((remote) => {
         if (cancelled) return
         if (remote.ok && remote.state) {
-          if (remote.version > remoteVersionRef.current) {
-            try {
-              apply(normalizeState(remote.state))
-            } catch {
-              /* ignore */
-            }
-          }
+          applyBundle(remote.state)
           remoteVersionRef.current = remote.version || remoteVersionRef.current
           setRemoteVersion(remoteVersionRef.current)
         }
@@ -871,14 +868,10 @@ export function TournamentProvider({ children }) {
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
     pushTimerRef.current = setTimeout(() => {
       setSyncStatus('syncing')
-      pushRemoteState(config, stateRef.current, remoteVersionRef.current)
+      pushRemoteState(config, bundleRef.current, remoteVersionRef.current)
         .then((push) => {
           if (push.conflict) {
-            try {
-              apply(normalizeState(push.state))
-            } catch {
-              /* ignore */
-            }
+            if (push.state) applyBundle(push.state)
             remoteVersionRef.current = push.version || remoteVersionRef.current
             setRemoteVersion(remoteVersionRef.current)
             setSyncStatus('synced')
@@ -897,7 +890,7 @@ export function TournamentProvider({ children }) {
     return () => {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
     }
-  }, [state])
+  }, [bundle])
 
   const standings = useMemo(
     () => computeStandings(state.players, state.rounds),
