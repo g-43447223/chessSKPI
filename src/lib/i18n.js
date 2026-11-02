@@ -1235,6 +1235,8 @@ const MESSAGES = {
   'teams.members': { ms: '{count} ahli', en: '{count} members' },
   'teams.membersCount': { ms: '{count} ahli', en: '{count} members' },
   'teams.noMembers': { ms: 'Tiada ahli', en: 'No members' },
+  'teams.manageMembers': { ms: 'Urus ahli', en: 'Manage members' },
+  'teams.membersModal.title': { ms: 'Ahli pasukan', en: 'Team members' },
   'teams.standings.aggregate': { ms: 'Agregat mata ahli', en: 'Aggregate member points' },
   'teams.standings.matches': { ms: 'Perlawanan pasukan', en: 'Team matches' },
   'teams.standings.tab.aggregate': { ms: 'Agregat', en: 'Aggregate' },

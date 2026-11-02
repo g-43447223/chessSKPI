@@ -22,6 +22,7 @@ export function Teams() {
     addTeam,
     updateTeam,
     deleteTeam,
+    assignPlayerTeam,
     notify,
   } = useTournament()
 
@@ -29,6 +30,7 @@ export function Teams() {
   const [editing, setEditing] = useState(null)
   const [name, setName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [managingTeam, setManagingTeam] = useState(null)
 
   const openAdd = () => {
     setEditing(null)
@@ -119,6 +121,9 @@ export function Teams() {
                     ) : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <Button variant="secondary" size="sm" icon="users" onClick={() => setManagingTeam(team)}>
+                      {t('teams.manageMembers')}
+                    </Button>
                     <Button variant="secondary" size="sm" icon="pencil" onClick={() => openEdit(team)}>
                       {t('teams.action.edit')}
                     </Button>
@@ -162,6 +167,54 @@ export function Teams() {
             autoFocus
           />
         </Field>
+      </Modal>
+
+      <Modal
+        open={Boolean(managingTeam)}
+        onClose={() => setManagingTeam(null)}
+        title={managingTeam ? t('teams.membersModal.title') + ' — ' + managingTeam.name : t('teams.membersModal.title')}
+        icon="users"
+        footer={
+          <Button onClick={() => setManagingTeam(null)}>{t('common.cancel')}</Button>
+        }
+      >
+        {players.length === 0 ? (
+          <EmptyState icon="users" title={t('players.empty.title')} />
+        ) : (
+          <div className="space-y-2">
+            {players.map((player) => {
+              const checked = player.teamId === managingTeam?.id
+              return (
+                <label
+                  key={player.id}
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-bold text-slate-800">{player.name}</span>
+                    <span className="text-[11px] text-slate-400">
+                      {player.grade || t('common.noClass')}
+                      {player.teamId && player.teamId !== managingTeam?.id
+                        ? ' · ' + (teams.find((team) => team.id === player.teamId)?.name ?? '')
+                        : ''}
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() =>
+                      assignPlayerTeam(
+                        player.id,
+                        checked ? null : managingTeam.id,
+                        true,
+                      )
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                </label>
+              )
+            })}
+          </div>
+        )}
       </Modal>
 
       <ConfirmDialog
