@@ -3,7 +3,7 @@ import { useTournament } from '../state/TournamentProvider'
 import { useLanguage } from '../state/LanguageProvider'
 import { cn, formatDate } from '../lib/utils'
 import { Icon, KnightMark } from './Icon'
-import { Badge, IconButton, LanguageSwitch } from './ui'
+import { Badge, Button, IconButton, Input, LanguageSwitch, Modal } from './ui'
 
 const NAV_ITEMS = [
   { id: 'dashboard', labelKey: 'nav.dashboard', icon: 'grid' },
@@ -149,6 +149,9 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
   const latestRound = rounds[rounds.length - 1] ?? null
   const currentRound = latestRound?.status === 'draft' ? latestRound : rounds.length + 1
   const [mobileOpen, setMobileOpen] = useMobileDrawer()
+  const [newOpen, setNewOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   useEffect(() => {
     const handleKey = (event) => {
@@ -234,8 +237,8 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
                   <button
                     type="button"
                     onClick={() => {
-                      const name = window.prompt(t('shell.tournamentNewPrompt'))
-                      if (name) createTournament(name)
+                      setNewName('')
+                      setNewOpen(true)
                     }}
                     className="flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[12px] font-bold text-white"
                   >
@@ -243,9 +246,7 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(t('shell.tournamentDeleteConfirm'))) deleteTournament(activeId)
-                    }}
+                    onClick={() => setDeleteOpen(true)}
                     className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[12px] font-bold text-rose-300"
                   >
                     {t('shell.tournamentDelete')}
@@ -373,6 +374,69 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
           </div>
         </footer>
       </div>
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title={t('shell.tournamentDelete')}
+        icon="trash"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                deleteTournament(activeId)
+                setDeleteOpen(false)
+              }}
+            >
+              {t('shell.tournamentDelete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-slate-600">{t('shell.tournamentDeleteConfirm')}</p>
+      </Modal>
+
+      <Modal
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        title={t('shell.tournamentNew')}
+        icon="plus"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setNewOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={() => {
+                const clean = newName.trim()
+                if (!clean) return
+                createTournament(clean)
+                setNewOpen(false)
+                setNewName('')
+              }}
+              disabled={!newName.trim()}
+            >
+              {t('shell.tournamentNew')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <label className="block text-[13px] font-semibold text-slate-700">
+            {t('shell.tournamentNewPrompt')}
+          </label>
+          <Input
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            placeholder={t('shell.tournamentNewPrompt')}
+            autoFocus
+          />
+        </div>
+      </Modal>
     </div>
   )
 }
