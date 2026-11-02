@@ -164,7 +164,7 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-100">
+    <div className="min-h-dvh overflow-x-hidden bg-slate-100">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[264px] flex-col bg-ink-950 px-4 py-5 lg:flex">
         <div className="chess-pattern pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" />
@@ -218,13 +218,47 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
             </div>
             <div className="mt-8 flex-1 overflow-y-auto">
               <NavList page={page} onNavigate={navigate} compact />
+              <div className="mt-4 space-y-2">
+                <select
+                  value={activeId}
+                  onChange={(event) => switchTournament(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[13px] font-semibold text-white"
+                >
+                  {tournaments.map((item) => (
+                    <option key={item.id} value={item.id} className="text-slate-900">
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = window.prompt(t('shell.tournamentNewPrompt'))
+                      if (name) createTournament(name)
+                    }}
+                    className="flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[12px] font-bold text-white"
+                  >
+                    {t('shell.tournamentNew')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(t('shell.tournamentDeleteConfirm'))) deleteTournament(activeId)
+                    }}
+                    className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[12px] font-bold text-rose-300"
+                  >
+                    {t('shell.tournamentDelete')}
+                  </button>
+                </div>
+              </div>
             </div>
             <SidebarFooter />
           </div>
         </aside>
       </div>
 
-      <div className="lg:pl-[264px]">
+      <div className="min-w-0 lg:pl-[264px]">
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-slate-100/85 backdrop-blur-md">
           <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <IconButton
@@ -293,7 +327,7 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
               />
             </div>
 
-            <LanguageSwitch />
+            <LanguageSwitch className="scale-90 origin-right sm:scale-100" />
 
             <button
               type="button"
