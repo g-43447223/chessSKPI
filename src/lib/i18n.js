@@ -132,6 +132,11 @@ const MESSAGES = {
     ms: 'Buka paparan projektor kontras tinggi',
     en: 'Open the high-contrast projector view',
   },
+  'shell.tournamentSelect': { ms: 'Pilih kejohanan', en: 'Select tournament' },
+  'shell.tournamentNew': { ms: 'Kejohanan baharu', en: 'New tournament' },
+  'shell.tournamentNewPrompt': { ms: 'Nama kejohanan baharu:', en: 'New tournament name:' },
+  'shell.tournamentDelete': { ms: 'Padam kejohanan', en: 'Delete tournament' },
+  'shell.tournamentDeleteConfirm': { ms: 'Padam kejohanan ini? Data tidak boleh dikembalikan.', en: 'Delete this tournament? This cannot be undone.' },
   'shell.projector': { ms: 'Projektor', en: 'Projector' },
   'shell.footer': {
     ms: 'ChessDesk · Pengurus kejohanan sekolah yang berfungsi luar talian. Disimpan secara automatik dalam pelayar ini.',
@@ -1095,6 +1100,9 @@ const MESSAGES = {
     ms: 'Format tidak boleh ditukar selepas undian dijana.',
     en: 'The format cannot be changed after pairings have been generated.',
   },
+  'errors.tournament.notFound': { ms: 'Kejohanan tidak dijumpai.', en: 'Tournament not found.' },
+  'errors.tournament.cannotDeleteLast': { ms: 'Sekurang-kurangnya satu kejohanan perlu kekal.', en: 'At least one tournament must remain.' },
+  'errors.tournament.nameRequired': { ms: 'Nama kejohanan diperlukan.', en: 'Tournament name is required.' },
   'errors.tournament.minRounds': {
     ms: 'Kejohanan ini sudah mempunyai {count} pusingan. Tetapkan sekurang-kurangnya bilangan itu.',
     en: 'This tournament already has {count} round(s). Set at least that many rounds.',

@@ -15,8 +15,10 @@ import { buildPlayerStats, computeStandings } from '../lib/stats'
 import {
   createEmptyState,
   loadState,
+  loadTournamentsBundle,
   normalizeState,
-  saveState,
+  normalizeBundle,
+  saveTournamentsBundle,
   storageSize,
 } from '../lib/storage'
 import { round2, uid } from '../lib/utils'
@@ -35,7 +37,14 @@ const TournamentContext = createContext(null)
 let toastSequence = 0
 
 export function TournamentProvider({ children }) {
-  const [state, setState] = useState(() => loadState())
+  const initialBundle = loadTournamentsBundle()
+  const [bundle, setBundle] = useState(initialBundle)
+  const [state, setState] = useState(() => {
+    const active =
+      initialBundle.tournaments.find((item) => item.id === initialBundle.activeId) ||
+      initialBundle.tournaments[0]
+    return active.state
+  })
   const [toasts, setToasts] = useState([])
   const [savedAt, setSavedAt] = useState(null)
   const [saveError, setSaveError] = useState(null)
@@ -43,6 +52,7 @@ export function TournamentProvider({ children }) {
   const [syncConfig, setSyncConfigState] = useState(() => getSyncConfig())
 
   const stateRef = useRef(state)
+  const bundleRef = useRef(initialBundle)
   const timers = useRef(new Map())
   const remoteVersionRef = useRef(getRemoteVersion())
   const readyRef = useRef(false)
@@ -51,12 +61,36 @@ export function TournamentProvider({ children }) {
   const apply = useCallback((next) => {
     stateRef.current = next
     setState(next)
+    setBundle((prev) => {
+      const updated = {
+        ...prev,
+        tournaments: prev.tournaments.map((item) =>
+          item.id === prev.activeId
+            ? { ...item, state: next, name: next.tournament?.name || item.name }
+            : item,
+        ),
+      }
+      bundleRef.current = updated
+      return updated
+    })
   }, [])
 
   const commit = useCallback((updater) => {
     const next = updater(stateRef.current)
     stateRef.current = next
     setState(next)
+    setBundle((prev) => {
+      const updated = {
+        ...prev,
+        tournaments: prev.tournaments.map((item) =>
+          item.id === prev.activeId
+            ? { ...item, state: next, name: next.tournament?.name || item.name }
+            : item,
+        ),
+      }
+      bundleRef.current = updated
+      return updated
+    })
     return next
   }, [])
 
@@ -82,7 +116,7 @@ export function TournamentProvider({ children }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const result = saveState(state)
+      const result = saveTournamentsBundle(bundleRef.current)
       if (result.ok) {
         setSavedAt(new Date())
         setSaveError(null)
@@ -91,7 +125,7 @@ export function TournamentProvider({ children }) {
       }
     }, 250)
     return () => clearTimeout(timer)
-  }, [state])
+  }, [bundle])
 
   useEffect(() => {
     const activeTimers = timers.current
@@ -464,6 +498,98 @@ export function TournamentProvider({ children }) {
     },
     [commit],
   )
+
+  const tournaments = bundle.tournaments.map((item) => ({ id: item.id, name: item.name }))
+  const activeId = bundle.activeId
+
+  const switchTournament = useCallback((id) => {
+    const entry = bundleRef.current.tournaments.find((item) => item.id === id)
+    if (!entry) return { ok: false, error: t('errors.tournament.notFound') }
+    stateRef.current = entry.state
+    setState(entry.state)
+    setBundle((prev) => {
+      const updated = { ...prev, activeId: id }
+      bundleRef.current = updated
+      return updated
+    })
+    return { ok: true }
+  }, [])
+
+  const createTournament = useCallback((name) => {
+    const state = createEmptyState()
+    if (name && String(name).trim()) {
+      state.tournament.name = String(name).trim()
+    }
+    const id = uid('t')
+    const entry = { id, name: state.tournament.name, state }
+    setBundle((prev) => {
+      const updated = {
+        ...prev,
+        activeId: id,
+        tournaments: [...prev.tournaments, entry],
+      }
+      bundleRef.current = updated
+      return updated
+    })
+    stateRef.current = state
+    setState(state)
+    return { ok: true, id }
+  }, [])
+
+  const deleteTournament = useCallback((id) => {
+    if (bundleRef.current.tournaments.length <= 1) {
+      return { ok: false, error: t('errors.tournament.cannotDeleteLast') }
+    }
+    const remaining = bundleRef.current.tournaments.filter((item) => item.id !== id)
+    if (!remaining.length) {
+      return { ok: false, error: t('errors.tournament.cannotDeleteLast') }
+    }
+    const nextActive =
+      bundleRef.current.activeId === id ? remaining[0].id : bundleRef.current.activeId
+    const nextActiveState =
+      remaining.find((item) => item.id === nextActive)?.state || remaining[0].state
+    setBundle((prev) => {
+      const updated = {
+        ...prev,
+        activeId: nextActive,
+        tournaments: remaining,
+      }
+      bundleRef.current = updated
+      return updated
+    })
+    stateRef.current = nextActiveState
+    setState(nextActiveState)
+    return { ok: true }
+  }, [])
+
+  const renameTournament = useCallback((id, name) => {
+    const clean = String(name ?? '').trim()
+    if (!clean) return { ok: false, error: t('errors.tournament.nameRequired') }
+    setBundle((prev) => {
+      const updated = {
+        ...prev,
+        tournaments: prev.tournaments.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                name: clean,
+                state:
+                  item.id === prev.activeId
+                    ? { ...item.state, tournament: { ...item.state.tournament, name: clean } }
+                    : item.state,
+              }
+            : item,
+        ),
+      }
+      bundleRef.current = updated
+      return updated
+    })
+    if (id === bundleRef.current.activeId) {
+      setState((prev) => ({ ...prev, tournament: { ...prev.tournament, name: clean } }))
+      stateRef.current = { ...stateRef.current, tournament: { ...stateRef.current.tournament, name: clean } }
+    }
+    return { ok: true }
+  }, [])
 
   const generateNextRound = useCallback(() => {
     const current = stateRef.current
@@ -838,6 +964,8 @@ export function TournamentProvider({ children }) {
     () => ({
       state,
       tournament: state.tournament,
+      tournaments,
+      activeId,
       players: state.players,
       teams: state.teams,
       rounds: state.rounds,
@@ -872,6 +1000,10 @@ export function TournamentProvider({ children }) {
       lockTeamRound,
       reopenTeamRound,
       deleteTeamRound,
+      switchTournament,
+      createTournament,
+      deleteTournament,
+      renameTournament,
       updateTournament,
       updateSettings,
       generateNextRound,
@@ -916,6 +1048,10 @@ export function TournamentProvider({ children }) {
       lockTeamRound,
       reopenTeamRound,
       deleteTeamRound,
+      switchTournament,
+      createTournament,
+      deleteTournament,
+      renameTournament,
       updateTournament,
       updateSettings,
       generateNextRound,

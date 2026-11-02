@@ -144,7 +144,7 @@ function SidebarFooter() {
 
 export function AppShell({ page, onNavigate, onProjector, children }) {
   const { t, locale } = useLanguage()
-  const { rounds, tournament, savedAt, saveError } = useTournament()
+  const { rounds, tournament, tournaments, activeId, switchTournament, createTournament, deleteTournament, renameTournament, savedAt, saveError } = useTournament()
   const meta = PAGE_META[page] ?? PAGE_META.dashboard
   const latestRound = rounds[rounds.length - 1] ?? null
   const currentRound = latestRound?.status === 'draft' ? latestRound : rounds.length + 1
@@ -261,6 +261,36 @@ export function AppShell({ page, onNavigate, onProjector, children }) {
                       total: tournament.totalRounds,
                     })}
               </span>
+            </div>
+
+            <div className="hidden items-center gap-2 md:flex">
+              <select
+                value={activeId}
+                onChange={(event) => switchTournament(event.target.value)}
+                className="h-9 max-w-[180px] rounded-xl border border-slate-200 bg-white px-2 text-[12px] font-semibold text-slate-700"
+                aria-label={t('shell.tournamentSelect')}
+              >
+                {tournaments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <IconButton
+                label={t('shell.tournamentNew')}
+                icon="plus"
+                onClick={() => {
+                  const name = window.prompt(t('shell.tournamentNewPrompt'))
+                  if (name) createTournament(name)
+                }}
+              />
+              <IconButton
+                label={t('shell.tournamentDelete')}
+                icon="trash"
+                onClick={() => {
+                  if (window.confirm(t('shell.tournamentDeleteConfirm'))) deleteTournament(activeId)
+                }}
+              />
             </div>
 
             <LanguageSwitch />

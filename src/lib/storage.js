@@ -210,3 +210,101 @@ export function storageSize(state) {
     return 0
   }
 }
+
+export function createEmptyBundle() {
+  const state = createEmptyState()
+  const id = uid('t')
+  return {
+    version: APP_VERSION,
+    activeId: id,
+    tournaments: [
+      {
+        id,
+        name: state.tournament.name,
+        state,
+      },
+    ],
+  }
+}
+
+function normalizeTournamentEntry(raw, index) {
+  if (!raw || typeof raw !== 'object') return null
+  const source = raw.state && typeof raw.state === 'object' ? raw.state : raw
+  let state
+  try {
+    state = normalizeState(source)
+  } catch {
+    state = createEmptyState()
+  }
+  const name = String(raw.name || state.tournament.name || `Kejohanan ${index + 1}`).trim()
+  return {
+    id: String(raw.id || uid('t')),
+    name: name || `Kejohanan ${index + 1}`,
+    state,
+  }
+}
+
+export function normalizeBundle(raw) {
+  const candidate =
+    raw && typeof raw === 'object' && raw.tournaments && Array.isArray(raw.tournaments)
+      ? raw
+      : null
+
+  let tournaments = []
+  if (candidate) {
+    tournaments = candidate.tournaments.map(normalizeTournamentEntry).filter(Boolean)
+  } else if (raw && typeof raw === 'object' && Array.isArray(raw.players) && Array.isArray(raw.rounds)) {
+    // Legacy single tournament
+    const state = normalizeState(raw)
+    tournaments = [{ id: uid('t'), name: state.tournament.name, state }]
+  } else {
+    tournaments = createEmptyBundle().tournaments
+  }
+
+  if (!tournaments.length) {
+    tournaments = createEmptyBundle().tournaments
+  }
+
+  const ids = new Set()
+  for (const tournament of tournaments) {
+    if (ids.has(tournament.id)) tournament.id = uid('t')
+    ids.add(tournament.id)
+  }
+
+  const activeId =
+    candidate && candidate.activeId && tournaments.some((item) => item.id === candidate.activeId)
+      ? candidate.activeId
+      : tournaments[0].id
+
+  return {
+    version: APP_VERSION,
+    activeId,
+    tournaments,
+  }
+}
+
+export function loadTournamentsBundle() {
+  try {
+    const serialized = localStorage.getItem(STORAGE_KEY)
+    if (!serialized) return createEmptyBundle()
+    return normalizeBundle(JSON.parse(serialized))
+  } catch (error) {
+    console.warn('Could not restore saved tournaments:', error)
+    return createEmptyBundle()
+  }
+}
+
+export function saveTournamentsBundle(bundle) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(bundle))
+    return { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error?.name === 'QuotaExceededError'
+          ? t('errors.storage.full')
+          : t('errors.storage.save'),
+    }
+  }
+}
