@@ -389,11 +389,9 @@ export function Modal({
     document.addEventListener('keydown', handleKey)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const timer = setTimeout(() => panelRef.current?.focus(), 30)
     return () => {
       document.removeEventListener('keydown', handleKey)
       document.body.style.overflow = previousOverflow
-      clearTimeout(timer)
     }
   }, [open, onClose])
 
