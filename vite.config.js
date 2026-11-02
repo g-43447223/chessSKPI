@@ -5,6 +5,6 @@ import { defineConfig } from 'vite'
 // Relative base keeps every asset path working on GitHub Pages
 // (https://<user>.github.io/<repo>/) without extra configuration.
 export default defineConfig({
-  base: './',
+  base: './chessSKPI/',
   plugins: [react(), tailwindcss()],
 })
